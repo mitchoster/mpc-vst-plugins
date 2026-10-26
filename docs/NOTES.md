@@ -1727,3 +1727,25 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
   own binary. Built with `tools/mpc310_on_391/` (2 copies of the salt found in the image, as in the binary).
 - Caveats: 3.10 may rewrite `MPC.settings` (the stick backs it up first); projects saved in 3.10 may not open in 3.9.1.
 
+three blocks with the output muted. 63 % of 2902 µs is 1828 µs, which is about what 9 MB of memset costs on
+this ARM. Control run with the panic branch compiled out, same source, same device: sweep 7.8 % p99 / 9.2 %
+max, PASS.
+
+The plugin was fine; the measurement was wrong. A tap is one discrete event, a drag is a stream, and a sweep
+that changes 4 random parameters per block cannot tell them apart. Every port with a trigger parameter was
+being scored as if a hand could hold the trigger down.
+
+Fix, on both sides of the wrapper/bench boundary:
+- `wrapper/vst2_wrap.c`: vendor opcode `0x7F01` (`EFF_MPC_IS_MOMENTARY`) answers 1 for a `momentary`
+  parameter. MPC never sends it; a plugin built before it answers 0 from the default branch, and the bench
+  then sweeps every parameter as before.
+- `tools/bench.c`: probes that opcode, sweeps only continuous controls, and fires each trigger once per eight
+  blocks in a new **trigger fire** stage. The stage is printed and written to `-j` as `triggers` /
+  `trigger_max_pct`, but it does not decide the verdict.
+- `docs/BENCH.md` documents the stage and the reasoning.
+
+DjFx with the fix: sweep 7.7 % p99 / 9.2 % max (**PASS**), trigger fire 38.5 % p99 / 66.4 % max. The trigger
+cost is real and stays visible; it just is not a verdict for a plugin whose continuous controls are cheap.
+
+General rule, same shape as the jv880 stepper lesson above: **if a parameter's `set_param` does bulk work it
+must be a one-shot trigger, and a trigger must be measured as a tap, not as a drag.**
