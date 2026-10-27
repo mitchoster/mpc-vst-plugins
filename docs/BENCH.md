@@ -22,8 +22,9 @@ can keep running.
   through the wrapper's vendor opcode `0x7F01` (`EFF_MPC_IS_MOMENTARY`). Those are excluded from the random sweep
   and measured in **trigger fire** instead: a tap is one discrete event, a drag is a stream, and only the stream is
   what a Q-Link can flood. A plugin built before that opcode existed answers 0 for every index, so the sweep covers
-  all parameters as it always did. The trigger stage is printed but does not decide the verdict; a trigger whose
-  cost approaches a whole block is still worth a look.
+  all parameters as it always did. The trigger stage does not decide the verdict the way a continuous stage does,
+  but a tap that reaches 90 % of a block (`TRIGGER_WARN_PCT` in `tools/bench.c`) turns a PASS into a WARN: such a
+  tap glitches the block after it.
 - Each block is timed with the thread's own CPU clock (`CLOCK_THREAD_CPUTIME_ID`), so time MPC's real-time threads
   take from us doesn't count. The plugin's own worker threads are reported separately (`threads%`).
 - The bench runs at normal priority, so MPC's audio always wins and nothing glitches. It pins to core 1 on Gen1 and

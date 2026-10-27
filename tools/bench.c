@@ -84,6 +84,7 @@ static float *ins[2] = {inL, inR}, *outs[2] = {outL, outR};
 static MidiEv mev[64];
 static Events evs;
 static int synth, sweep_all;
+#define TRIGGER_WARN_PCT 90.0   /* a trigger tap that eats this much of a block is worth a WARN */
 /* Parameters split by kind, once the plugin answers the framework's EFF_MPC_IS_MOMENTARY opcode: the
  * sweep only turns continuous controls, one-shot triggers get their own stage (2026-10-26). */
 static int *sw_idx, sw_n, *tr_idx, tr_n, pending_release = -1;
@@ -237,8 +238,14 @@ int main(int argc, char **argv) {
     double w99 = worst99 / BUDGET_US * 100, wmax = worstmax / BUDGET_US * 100;
     /* thresholds: see docs/BENCH.md */
     const char *verdict = w99 <= 15 && wmax <= 50 ? "PASS" : w99 <= 35 && wmax <= 80 ? "WARN" : "FAIL";
-    printf("worst p99 %.1f%%, worst block %.1f%%, background threads up to %.1f%% of a core -> %s\n", w99, wmax, bg,
-           verdict);
+    /* A one-shot trigger is not a drag, so it does not decide the verdict like one (see docs/BENCH.md). It is
+     * still real audio-thread work: a tap that eats most of a block glitches the next one, so PASS turns into
+     * WARN above TRIGGER_WARN_PCT. Review by sd88me on #561, 2026-10-27. */
+    const double trmax = tr_n > 0 ? st[ncont].max / BUDGET_US * 100 : 0.0;
+    if (tr_n > 0 && trmax >= TRIGGER_WARN_PCT && strcmp(verdict, "FAIL") != 0) verdict = "WARN";
+    printf("worst p99 %.1f%%, worst block %.1f%%, background threads up to %.1f%% of a core", w99, wmax, bg);
+    if (tr_n > 0) printf(", trigger max %.1f%% of a block", trmax);
+    printf(" -> %s\n", verdict);
     if (json) {
         printf("{\"plugin\":\"%s\",\"instrument\":%d,\"open_ms\":%.1f,\"p99_pct\":%.1f,\"max_pct\":%.1f,"
                "\"threads_pct\":%.1f,\"verdict\":\"%s\"",
